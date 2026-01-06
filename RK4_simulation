@@ -1,0 +1,94 @@
+program RK4SIMU
+  implicit none
+  integer, parameter :: nx=500, ny=500
+  real(8), parameter :: dt=1d0, T=30000d0
+  integer :: steps, step
+  real(8) :: X(nx,ny), Y(nx,ny), U(nx,ny), V(nx,ny)
+  real(8) :: C0, fcor, alpha, beta, Rm, B, eps
+  integer :: i, j
+  real(8) :: u_new, v_new
+  integer :: snap(0:99)
+  C0   = -6.4d10
+  fcor = 5.179d-5
+  alpha = 1.0d-4
+  beta  = 2.378d-10
+  Rm = 30000.0d0
+  B  = 1.5d0
+  eps = 1.0d6
+  steps = int(T/dt)
+  do i=0,99
+     snap(i) = int( real(i)/99.0d0 * steps )
+  end do
+  do j=1, ny
+     do i=1, nx
+        X(i,j) = -200000d0 + (i-1)*(400000d0/(nx-1))
+        Y(i,j) = -200000d0 + (j-1)*(400000d0/(ny-1))
+        U(i,j) = 0d0
+        V(i,j) = 0d0
+     end do
+  end do
+  call write_indexed(0, U, V, nx, ny)
+  do step = 1, steps
+     do j=1, ny
+        do i=1, nx
+           call rk4(U(i,j),V(i,j),X(i,j),Y(i,j),dt, &
+                     C0,fcor,alpha,beta,Rm,B,eps, u_new,v_new)
+           U(i,j) = u_new
+           V(i,j) = v_new
+        end do
+     end do
+     do i=1,99
+        if(step == snap(i)) then
+           call write_indexed(i, U, V, nx, ny)
+        end if
+     end do
+  end do
+contains
+  subroutine write_indexed(k, U, V, nx, ny)
+    implicit none
+    integer, intent(in) :: k, nx, ny
+    real(8), intent(in) :: U(nx,ny), V(nx,ny)
+    character(len=20) :: fnU, fnV
+    write(fnU,"('U',I2.2,'.dat')") k
+    write(fnV,"('V',I2.2,'.dat')") k
+    call output_fields(fnU, fnV, U, V, nx, ny)
+  end subroutine write_indexed
+  subroutine rk4(u,v,x,y,dt,C0,fcor,alpha,beta,Rm,B,eps,u_new,v_new)
+    implicit none
+    real(8), intent(in) :: u,v,x,y,dt,C0,fcor,alpha,beta,Rm,B,eps
+    real(8), intent(out):: u_new,v_new
+    real(8) :: k1u,k1v,k2u,k2v,k3u,k3v,k4u,k4v
+    call accel(x,y,u,           v,           C0,fcor,alpha,beta,Rm,B,eps,k1u,k1v)
+    call accel(x,y,u+0.5d0*dt*k1u, v+0.5d0*dt*k1v, C0,fcor,alpha,beta,Rm,B,eps,k2u,k2v)
+    call accel(x,y,u+0.5d0*dt*k2u, v+0.5d0*dt*k2v, C0,fcor,alpha,beta,Rm,B,eps,k3u,k3v)
+    call accel(x,y,u+dt*k3u,       v+dt*k3v,       C0,fcor,alpha,beta,Rm,B,eps,k4u,k4v)
+    u_new = u + (dt/6d0)*(k1u + 2d0*k2u + 2d0*k3u + k4u)
+    v_new = v + (dt/6d0)*(k1v + 2d0*k2v + 2d0*k3v + k4v)
+  end subroutine rk4
+  subroutine accel(x,y,u,v,C0,fcor,alpha,beta,Rm,B,eps,au,av)
+    implicit none
+    real(8), intent(in) :: x,y,u,v,C0,fcor,alpha,beta,Rm,B,eps
+    real(8), intent(out):: au,av
+    real(8) :: r2,r,core
+    r2 = x*x + y*y + eps
+    r = sqrt(r2)
+    core = exp(-(Rm/r)**B) * r2**(-1.75d0)
+    au = C0*core*x + fcor*v - alpha*u + beta*x
+    av = C0*core*y - fcor*u - alpha*v + beta*y
+  end subroutine accel
+  subroutine output_fields(fnU,fnV,U,V,nx,ny)
+    implicit none
+    character(len=*), intent(in) :: fnU, fnV
+    integer, intent(in) :: nx, ny
+    real(8), intent(in) :: U(nx,ny), V(nx,ny)
+    integer :: i,j,fu,fv
+    open(newunit=fu, file=fnU, status="replace")
+    open(newunit=fv, file=fnV, status="replace")
+    do j=1, ny
+       write(fu,*)(U(i,j), i=1,nx)
+       write(fv,*)(V(i,j), i=1,nx)
+    end do
+    close(fu)
+    close(fv)
+  end subroutine output_fields
+end program RK4SIMU
